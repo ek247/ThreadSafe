@@ -5,11 +5,13 @@ import edu.cmu.lti.lexical_db.ILexicalDatabase;
 import edu.cmu.lti.lexical_db.NictWordNet;
 import edu.cmu.lti.ws4j.impl.WuPalmer;
 import edu.cmu.lti.ws4j.util.WS4JConfiguration;
+import org.junit.runner.Result;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
  * Created by Eugene Kennedy on 6/3/2016.
@@ -19,20 +21,24 @@ import java.util.ArrayList;
 
 public class Statistics {
     final String categories = "dress pants jewelry shirt skirt leggings belt shorts";
+
     DatabaseActions actions;
     ILexicalDatabase db;
 
     public Statistics()
     {
-        db = new NictWordNet();
         actions = new DatabaseActions();
+        db = new NictWordNet();
     }
 
-    public static void main(String [] args)
+    /*public static void main(String [] args)
     {
         Statistics s = new Statistics();
         try {
-            System.out.println(s.getInfoBySimilarName("dress").get(0).getName());
+            System.out.println(s.getInfoBySimilarity(0, "dress").get(0).getName());
+            HashMap<String, Integer> map = s.popularityByActualName();
+            for(String str : map.keySet())
+                System.out.println(str + " : " + map.get(str));
         }
         catch (SQLException e)
         {
@@ -41,7 +47,7 @@ public class Statistics {
         }
         //System.out.println(s.compute("dress#n#1", "skirt#n#1"));
     }
-
+*/
     public ArrayList<ProductData> getInfoByName(String name) throws SQLException
     {
         ArrayList<ProductData> data = new ArrayList<ProductData>();
@@ -62,11 +68,24 @@ public class Statistics {
         return data;
     }
 
-    public ArrayList<ProductData> getInfoBySimilarName(String name) throws SQLException
+    //id -> 0 = name, 1 = Full Description, 2 = Color
+    public ArrayList<ProductData> getInfoBySimilarity(int id, String name) throws SQLException
     {
         ArrayList<ProductData> data = new ArrayList<ProductData>();
 
-        PreparedStatement stmt = actions.conn.prepareStatement("select pid, name from items");
+        PreparedStatement stmt = null;
+        String column = "";
+        switch (id) {
+            case 0:
+                stmt = actions.conn.prepareStatement("select pid, name from items");
+                break;
+            case 1:
+                stmt = actions.conn.prepareStatement("select pid, descFull from items");
+                break;
+            case 2:
+                stmt = actions.conn.prepareStatement("select pid, colorName from items");
+                break;
+        }
         ResultSet rs = stmt.executeQuery();
         ArrayList<String> names = new ArrayList<String>();
         ArrayList<Integer> pid = new ArrayList<Integer>();
@@ -74,14 +93,13 @@ public class Statistics {
         while(rs.next())
         {
             pid.add(rs.getInt("pid"));
-            names.add(rs.getString("name"));
+            names.add(rs.getString(2));
         }
 
         stmt.close();
         rs.close();
 
         String [] givenNameArr = name.split(" |\\.|,|-");
-
 
 
         //Iterate over found names and compute similarity wordwise accross given name
@@ -99,8 +117,6 @@ public class Statistics {
                     double val = compute(test, strings);
                     if(val > .6) //Use .6+ as similar enough to be considered a "match"
                     {
-                        if(val > 1)
-                            val = 1; //if words are equal sometimes it can go above 1 in testing. Don't allow this.
                         sum[k] += val;
                         matches[k] += 1;
                     }
@@ -115,7 +131,8 @@ public class Statistics {
                 if(matches[w] == 0)
                     weight += 0; //Not found, reduce weight
                 else
-                    weight += sum[i]/matches[i]; //Otherwise, change weight by the average strength of the match
+                    weight += sum[w]/matches[w]; //Otherwise, change weight by the average strength of the match
+
             }
             if(weight > .5) //If overall weight is above .5, return it.
             {
@@ -149,10 +166,68 @@ public class Statistics {
         return data;
     }
 
+    //Compute similarity of words using ws4j as a double between 0 and 1.
     private double compute(String word1, String word2) {
         WS4JConfiguration.getInstance().setMFS(true);
         double s = new WuPalmer(db).calcRelatednessOfWords(word1, word2);
+
+        if(s > 1)
+            s = 1; //if words are equal sometimes it can go above 1 in testing. Don't allow this.
         return s;
     }
 
+    //Generates a hashmap of names/item terms and the number of occurences. This is not based on semantics, but words must be exact to be counted.
+    public HashMap<String, Integer> popularityByActualName()
+    {
+        HashMap<String, Integer> map = new HashMap<String, Integer>();
+
+        try {
+            PreparedStatement stmt = actions.conn.prepareStatement("select name, descFull, colorName from items");
+            ResultSet rs = stmt.executeQuery();
+            while(rs.next())
+            {
+                String name = (rs.getString("name"));
+                String desc = (rs.getString("descFull"));
+                String color = (rs.getString("colorName"));
+
+                for(String s : name.split("\\.|,|-| "))
+                {
+                    if(map.containsKey(s)) {
+                        map.put(s, new Integer(map.get(s).intValue() + 1));
+                        continue;
+                    }
+                    else
+                        map.put(s, new Integer(1));
+                }
+
+                for(String s : desc.split(" |\\.|,|-"))
+                {
+                    if(s.equals(""))
+                        continue;
+                    if(map.containsKey(s)) {
+                        map.put(s, new Integer(map.get(s).intValue() + 1));
+                        continue;
+                    }
+                    else
+                        map.put(s, new Integer(1));
+                }
+
+                for(String s : color.split(" |\\.|,|-"))
+                {
+                    if(map.containsKey(s)) {
+                        map.put(s, new Integer(map.get(s).intValue() + 1));
+                        continue;
+                    }
+                    else
+                        map.put(s, new Integer(1));
+                }
+
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+
+        return map;
+    }
 }

@@ -20,7 +20,7 @@ import org.jsoup.select.Elements;
 
 
 public class Crawler {
-    private final String insertSQL = "INSERT INTO `crawler`.`items`\n" +
+    private final String insertSQL = "INSERT IGNORE INTO `crawler`.`items`\n" +
             "(`pid`,\n" +
             "`url`,\n" +
             "`colorCode`,\n" +
@@ -41,7 +41,7 @@ public class Crawler {
             "?,\n" +
             "?);";
 
-    private final String updateSQL =  "UPDATE items set colorCode = ?, colorName = ?, url = ?, price = ?, descFull = ?, name = ?, category=? where pid=? and site=?";
+    private final String updateSQL =  "UPDATE IGNORE items set colorCode = ?, colorName = ?, url = ?, price = ?, descFull = ?, name = ?, category=? where pid=? and site=?";
     private DatabaseActions db;
     private Queue<String> toVisit;
     private HashSet<String> hasVisited;
@@ -93,10 +93,10 @@ public class Crawler {
     {
 
         url = parseURL(url);
-        System.out.println("here at "+url);
         if(hasVisited.contains(url))
             return;
 
+        System.out.println("here at "+url);
         hasVisited.add(url);
 
         //System.out.println("here + "+url);
@@ -336,6 +336,7 @@ public class Crawler {
 
         if(url.contains("pid"))
         {
+            System.out.println("at product");
             int start = -1;
             int end = -1;
             String html = "";
